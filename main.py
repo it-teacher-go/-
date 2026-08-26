@@ -1,59 +1,84 @@
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# -----------------------------
+# 페이지 설정
+# -----------------------------
+st.set_page_config(
+    page_title="서울 기온 데이터 분석",
+    page_icon="🌡️",
+    layout="wide"
+)
+
+st.title("🌡️ 서울 기온 데이터 분석")
+st.write("서울의 일별 기온 데이터를 이용해 요약통계와 연평균 기온 변화를 살펴봅니다.")
+
+# -----------------------------
+# 데이터 불러오기
+# -----------------------------
 url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/seoul.csv"
 
-# 데이터 읽기
-df = pd.read_csv(url, encoding="utf-8-sig")
-df["날짜"] = pd.to_datetime(df["날짜"])
+df = pd.read_csv(url, encoding="cp949")
+
+st.subheader("1. 원본 데이터")
+st.dataframe(df)
+
+# -----------------------------
+# 요약통계
+# -----------------------------
+st.subheader("2. 기온 데이터 요약통계")
+
+summary = df.describe()
+
+st.dataframe(summary)
+
+# -----------------------------
+# 날짜 데이터 처리
+# -----------------------------
+df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
+
+# 연도 추출
 df["연도"] = df["날짜"].dt.year
 
-# 요약통계
-print(df.describe())
+# -----------------------------
+# 일별 평균기온 → 연평균 기온
+# -----------------------------
+annual_temp = (
+    df.groupby("연도")["평균기온(℃)"]
+    .mean()
+    .reset_index()
+)
 
-# 연평균 기온
-annual_temp = df.groupby("연도")["평균기온"].mean()
+# 1907년 이후만 사용
+annual_temp = annual_temp[annual_temp["연도"] >= 1907]
 
-# 전체 연도 범위
-all_years = range(df["연도"].min(), df["연도"].max() + 1)
+# -----------------------------
+# 연평균 기온 그래프
+# -----------------------------
+st.subheader("3. 서울의 연평균 기온 변화")
 
-# 아예 값이 없는 연도 찾기
-missing_years = []
-for y in all_years:
-    year_data = df[df["연도"] == y]["평균기온"]
-    if year_data.notna().sum() == 0:
-        missing_years.append(y)
+fig, ax = plt.subplots(figsize=(14, 6))
 
-# 유난히 낮은 연도 찾기(IQR 기준)
-q1 = annual_temp.quantile(0.25)
-q3 = annual_temp.quantile(0.75)
-iqr = q3 - q1
-low_cut = q1 - 1.5 * iqr
-low_years = annual_temp[annual_temp < low_cut]
+ax.plot(
+    annual_temp["연도"],
+    annual_temp["평균기온(℃)"],
+    linewidth=1.5
+)
 
-# 그래프
-plt.figure(figsize=(14, 6))
-plt.plot(annual_temp.index, annual_temp.values, marker="o", markersize=2, linewidth=1)
+ax.set_title("서울의 연평균 기온 변화 (1907년~현재)", fontsize=16)
+ax.set_xlabel("연도")
+ax.set_ylabel("연평균 기온 (℃)")
+ax.grid(alpha=0.3)
 
-# 비어 있는 연도 강조
-for y in missing_years:
-    plt.axvspan(y - 0.5, y + 0.5, alpha=0.2)
-    plt.text(y, annual_temp.min(), f"{y}\n자료 없음", ha="center", va="bottom")
+st.pyplot(fig)
 
-# 유난히 낮은 연도 강조
-plt.scatter(low_years.index, low_years.values, s=80)
-for y, v in low_years.items():
-    plt.text(y, v, f"{y}: {v:.2f}℃", ha="center", va="bottom")
+# -----------------------------
+# 연평균 데이터 확인
+# -----------------------------
+st.subheader("4. 연도별 평균기온 데이터")
 
-# 1907년은 부분 연도라 참고 표시
-if 1907 in annual_temp.index:
-    plt.text(1907, annual_temp.loc[1907], "1907\n(10월 시작)", ha="center", va="top")
-
-plt.title("서울 연평균 기온 추세 (비어 있는 연도·유난히 낮은 연도 강조)")
-plt.xlabel("연도")
-plt.ylabel("연평균기온(℃)")
-plt.grid(True)
-plt.show()
-
-print("값이 비어 있는 연도:", missing_years)
-print("유난히 낮은 연도:", list(low_years.index))
+st.dataframe(
+    annual_temp,
+    use_container_width=True
+)
